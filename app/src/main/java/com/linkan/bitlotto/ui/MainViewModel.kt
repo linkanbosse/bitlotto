@@ -49,6 +49,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _send = MutableStateFlow<SendState>(SendState.Idle)
     val send: StateFlow<SendState> = _send.asStateFlow()
 
+    private val _diag = MutableStateFlow<List<com.linkan.bitlotto.DiagResult>?>(null)
+    val diag: StateFlow<List<com.linkan.bitlotto.DiagResult>?> = _diag.asStateFlow()
+    private val _diagRunning = MutableStateFlow(false)
+    val diagRunning: StateFlow<Boolean> = _diagRunning.asStateFlow()
+
+    fun runDiagnostics() {
+        if (_diagRunning.value) return
+        viewModelScope.launch {
+            _diagRunning.value = true
+            _diag.value = com.linkan.bitlotto.Diagnostics.run(settings.current)
+            _diagRunning.value = false
+        }
+    }
+
     private val _fees = MutableStateFlow<FeeOptions?>(null)
     val fees: StateFlow<FeeOptions?> = _fees.asStateFlow()
 
@@ -85,7 +99,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _wallet.update { it.copy(phase = WalletPhase.Ready(repo.snapshot())) }
                 sync()
             } catch (e: Exception) {
-                _wallet.update { it.copy(phase = WalletPhase.Failed(e.message ?: e.javaClass.simpleName)) }
+                _wallet.update { it.copy(phase = WalletPhase.Failed(com.linkan.bitlotto.wallet.describeError(e))) }
             }
         }
     }
@@ -99,7 +113,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val snap = repo.snapshot()
                 _wallet.update { it.copy(phase = WalletPhase.Ready(snap), syncing = false) }
             } catch (e: Exception) {
-                _wallet.update { it.copy(syncing = false, lastSyncError = "Synk misslyckades: ${e.message ?: e.javaClass.simpleName}") }
+                _wallet.update { it.copy(syncing = false, lastSyncError = "Synk misslyckades: ${e.message ?: e.toString()}") }
             }
         }
     }
@@ -167,7 +181,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun isValidMainnetAddress(a: String) = repo.isValidAddress(a, WalletNet.MAINNET)
 
     private fun friendlyError(e: Exception): String {
-        val m = e.message ?: e.javaClass.simpleName
+        val m = e.message ?: e.toString()
         return when {
             m.contains("InsufficientFunds", true) -> "Otillräckligt saldo (inklusive avgift)"
             m.contains("OutputBelowDustLimit", true) -> "Beloppet är för litet (under dust-gränsen)"

@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.linkan.bitlotto.BuildConfig
@@ -148,6 +149,11 @@ fun SettingsScreen(vm: MainViewModel) {
                 enabled = hostDraft.isNotBlank() && port != null && port in 1..65535 &&
                     (hostDraft != s.poolHost || port != s.poolPort),
             ) { Text("Spara egen pool") }
+            Text(
+                "Om poolen inte svarar provar minern automatiskt de andra poolerna.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (miner.running) {
                 Text("Ändringar gäller nästa gång minern startas.", style = MaterialTheme.typography.bodySmall, color = BtcOrange)
             }
@@ -178,6 +184,30 @@ fun SettingsScreen(vm: MainViewModel) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+
+        SectionCard {
+            SectionLabel("Felsökning")
+            val diag by vm.diag.collectAsState()
+            val diagRunning by vm.diagRunning.collectAsState()
+            Text(
+                "Testar exakt de servrar plånboken och minern använder.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = { vm.runDiagnostics() }, enabled = !diagRunning, modifier = Modifier.fillMaxWidth()) {
+                Text(if (diagRunning) "Testar… (upp till 20 s)" else "Testa anslutningar")
+            }
+            diag?.forEach { r ->
+                Spacer(Modifier.height(8.dp))
+                Text((if (r.ok) "✅ " else "❌ ") + r.name, fontWeight = FontWeight.SemiBold)
+                Text(
+                    r.detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (r.ok) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                )
+            }
         }
 
         SectionCard {

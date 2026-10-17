@@ -1,6 +1,7 @@
 package com.linkan.bitlotto.wallet
 
 import android.content.Context
+import com.linkan.bitlotto.Endpoints
 import com.linkan.bitlotto.WalletNet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -96,6 +97,7 @@ class WalletRepository(private val context: Context) {
     /** Deletes the local wallet databases (not the seed). */
     fun deleteDatabases() {
         close()
+        context.getSharedPreferences("walletmeta", Context.MODE_PRIVATE).edit().clear().apply()
         WalletNet.entries.forEach { n ->
             dbFile(n).delete()
             File(dbFile(n).absolutePath + "-journal").delete()
@@ -104,12 +106,42 @@ class WalletRepository(private val context: Context) {
         }
     }
 
+    /**
+     * First sync on a network does a full scan; later syncs only check revealed addresses,
+     * which needs far fewer requests. Requests run one at a time (public servers rate-limit),
+     * with retries and a fallback server.
+     */
     suspend fun sync() = io {
         val w = requireWallet()
-        val request = w.startFullScan().build()
-        val update = esplora().fullScan(request, 20uL, 4uL)
-        w.applyUpdate(update)
+        val prefs = context.getSharedPreferences("walletmeta", Context.MODE_PRIVATE)
+        val key = "scanned_${net.name}"
+        val full = !prefs.getBoolean(key, false)
+        withServer { client ->
+            val update = if (full) {
+                client.fullScan(w.startFullScan().build(), 10uL, 1uL)
+            } else {
+                client.sync(w.startSyncWithRevealedSpks().build(), 1uL)
+            }
+            w.applyUpdate(update)
+        }
         w.persist(requirePersister())
+        if (full) prefs.edit().putBoolean(key, true).apply()
+    }
+
+    /** Runs [block] against each server in turn, retrying transient failures. */
+    private suspend fun <T> withServer(block: (EsploraClient) -> T): T {
+        var last: Exception? = null
+        for (base in Endpoints.esplora(net)) {
+            for (attempt in 0 until 3) {
+                try {
+                    return block(EsploraClient(base))
+                } catch (e: Exception) {
+                    last = e
+                    kotlinx.coroutines.delay(1500L * (attempt + 1))
+                }
+            }
+        }
+        throw IllegalStateException(describeError(last), last)
     }
 
     suspend fun snapshot(): WalletSnapshot = io {
@@ -163,7 +195,7 @@ class WalletRepository(private val context: Context) {
     }
 
     suspend fun feeOptions(): FeeOptions = io {
-        val est = runCatching { esplora().getFeeEstimates() }.getOrDefault(emptyMap())
+        val est = runCatching { withServer { it.getFeeEstimates() } }.getOrDefault(emptyMap())
         fun at(target: Int, fallback: Long): Long {
             val v = est[target.toUShort()] ?: return fallback
             return kotlin.math.ceil(v).toLong().coerceAtLeast(1L)
@@ -201,12 +233,11 @@ class WalletRepository(private val context: Context) {
     }
 
     suspend fun broadcast(p: PendingSend): String = io {
-        esplora().broadcast(p.tx)
+        withServer { it.broadcast(p.tx) }
         val txid = p.tx.computeTxid().toString()
         runCatching {
             val w = requireWallet()
-            val update = esplora().sync(w.startSyncWithRevealedSpks().build(), 4uL)
-            w.applyUpdate(update)
+            withServer { w.applyUpdate(it.sync(w.startSyncWithRevealedSpks().build(), 1uL)) }
             w.persist(requirePersister())
         }
         txid
@@ -217,12 +248,6 @@ class WalletRepository(private val context: Context) {
         WalletNet.TESTNET4 -> "https://mempool.space/testnet4/tx/$txid"
     }
 
-    private fun esplora() = EsploraClient(
-        when (net) {
-            WalletNet.MAINNET -> "https://mempool.space/api"
-            WalletNet.TESTNET4 -> "https://mempool.space/testnet4/api"
-        }
-    )
 
     private fun dbFile(n: WalletNet) = File(context.filesDir, "wallet_${n.name.lowercase()}.sqlite")
 
@@ -241,4 +266,17 @@ fun WalletNet.bdk(): Network = when (this) {
 fun WalletNet.kind(): NetworkKind = when (this) {
     WalletNet.MAINNET -> NetworkKind.MAIN
     WalletNet.TESTNET4 -> NetworkKind.TEST
+}
+
+/** Readable text for BDK/network errors, including the underlying cause. */
+fun describeError(e: Throwable?): String {
+    if (e == null) return "Okänt fel"
+    val text = e.toString().removePrefix("org.bitcoindevkit.")
+    return when {
+        text.contains("429") -> "Servern begränsar antalet anrop (HTTP 429). Vänta en minut och försök igen."
+        text.contains("UnknownHost", true) || text.contains("dns", true) ||
+            text.contains("resolve", true) -> "Ingen internetanslutning eller DNS-fel: $text"
+        text.contains("timed out", true) || text.contains("timeout", true) -> "Timeout mot servern: $text"
+        else -> text.take(300)
+    }
 }

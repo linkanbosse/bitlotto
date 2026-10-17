@@ -35,8 +35,10 @@ public final class StratumClient {
     private static final int ID_AUTHORIZE = 2;
     private static final int ID_SUGGEST = 3;
 
-    private final String host;
-    private final int port;
+    private final String[] hosts;
+    private final int[] ports;
+    private int endpoint = 0;
+    private volatile boolean subscribedThisSession;
     private final String user;
     private final String password;
     private final double suggestedDifficulty;
@@ -49,10 +51,14 @@ public final class StratumClient {
     private volatile BufferedWriter writer;
     private Thread thread;
 
-    public StratumClient(String host, int port, String user, String password,
+    /**
+     * @param hosts endpoints tried in order; on a failed connection the next one is used.
+     */
+    public StratumClient(String[] hosts, int[] ports, String user, String password,
                          double suggestedDifficulty, Listener listener) {
-        this.host = host;
-        this.port = port;
+        if (hosts.length == 0 || hosts.length != ports.length) throw new IllegalArgumentException("endpoints");
+        this.hosts = hosts;
+        this.ports = ports;
         this.user = user;
         this.password = password;
         this.suggestedDifficulty = suggestedDifficulty;
@@ -77,17 +83,22 @@ public final class StratumClient {
         long backoff = 2000;
         while (running) {
             long started = System.currentTimeMillis();
+            subscribedThisSession = false;
+            String where = hosts[endpoint] + ":" + ports[endpoint];
             try {
-                session();
+                session(hosts[endpoint], ports[endpoint]);
             } catch (Exception e) {
                 if (!running) break;
-                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                listener.onDisconnected(msg);
+                listener.onDisconnected(where + " – " + describe(e));
             } finally {
                 closeSocket();
                 pendingSubmits.clear();
             }
             if (!running) break;
+            if (!subscribedThisSession && hosts.length > 1) {
+                endpoint = (endpoint + 1) % hosts.length;
+                backoff = 2000;
+            }
             if (System.currentTimeMillis() - started > 120_000) backoff = 2000;
             listener.onStatus("Återansluter om " + (backoff / 1000) + " s…");
             try {
@@ -99,7 +110,16 @@ public final class StratumClient {
         }
     }
 
-    private void session() throws IOException, JSONException {
+    static String describe(Throwable e) {
+        String name = e.getClass().getSimpleName();
+        String msg = e.getMessage();
+        if (e instanceof java.net.UnknownHostException) return "hittar inte servern (DNS/ingen internet)";
+        if (e instanceof java.net.SocketTimeoutException) return "timeout – servern svarar inte (port blockerad?)";
+        if (e instanceof java.net.ConnectException) return "anslutning nekad" + (msg != null ? " (" + msg + ")" : "");
+        return msg != null ? name + ": " + msg : name;
+    }
+
+    private void session(String host, int port) throws IOException, JSONException {
         listener.onStatus("Ansluter till " + host + ":" + port + "…");
         Socket s = new Socket();
         s.connect(new InetSocketAddress(host, port), 15_000);
@@ -150,6 +170,7 @@ public final class StratumClient {
             if (result == null || result.length() < 3) {
                 throw new IOException("Ogiltigt subscribe-svar" + (error != null ? ": " + error : ""));
             }
+            subscribedThisSession = true;
             listener.onSubscribed(result.getString(1), result.getInt(2));
             send(ID_AUTHORIZE, "mining.authorize", new JSONArray().put(user).put(password));
             if (suggestedDifficulty > 0) {

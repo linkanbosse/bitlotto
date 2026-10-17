@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -75,7 +76,26 @@ fun MinerScreen(vm: MainViewModel) {
                     fontFamily = Mono,
                     color = if (ui.running && ui.pauseReason == null) BtcOrange else MaterialTheme.colorScheme.onSurface,
                 )
-                Text(ui.pauseReason ?: ui.status, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (ui.running && ui.pauseReason != null) {
+                    Text("Pausad: ${ui.pauseReason}", color = BtcOrange, fontWeight = FontWeight.SemiBold)
+                    Text(ui.status, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    if (ui.pauseReason == "Väntar på laddare") {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { vm.settings.update { it.copy(onlyWhenCharging = false) } },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Mina även på batteri") }
+                    }
+                } else {
+                    Text(ui.status, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (ui.running && !ui.connected) {
+                    Text(
+                        "Ingen kontakt med poolen än. Kör Felsökning under Inställningar om det dröjer.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (ui.running) {
                     Text(
                         "${ui.threads} trådar · ${ui.pool} · ${formatDuration(ui.sessionSeconds)}",

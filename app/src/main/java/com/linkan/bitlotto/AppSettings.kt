@@ -27,7 +27,7 @@ data class SettingsState(
     val payoutAddress: String = "",
     val threads: Int = 2,
     val onlyWhenCharging: Boolean = true,
-    val maxBatteryTempC: Int = 40,
+    val maxBatteryTempC: Int = 42,
 )
 
 /** Lightweight SharedPreferences-backed settings with a StateFlow for Compose. */
@@ -49,7 +49,7 @@ class AppSettings(context: Context) {
         payoutAddress = prefs.getString("payoutAddress", null) ?: "",
         threads = prefs.getInt("threads", 2),
         onlyWhenCharging = prefs.getBoolean("onlyWhenCharging", true),
-        maxBatteryTempC = prefs.getInt("maxBatteryTempC", 40),
+        maxBatteryTempC = prefs.getInt("maxBatteryTempC", 42),
     )
 
     fun update(transform: (SettingsState) -> SettingsState) {

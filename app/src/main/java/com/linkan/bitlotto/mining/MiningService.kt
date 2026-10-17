@@ -123,8 +123,14 @@ class MiningService : Service() {
         }
         eng.start(threads, factory)
 
-        val user = payout + s.userSuffix
-        client = StratumClient(s.poolHost, s.poolPort, user, "x", 1.0, stratumListener).also { it.start() }
+        // Both CKPool and Public Pool accept "address.worker".
+        val user = "$payout.bitlotto"
+        val endpoints = com.linkan.bitlotto.Endpoints.pools(s)
+        client = StratumClient(
+            endpoints.map { it.first }.toTypedArray(),
+            endpoints.map { it.second }.toIntArray(),
+            user, "x", 1.0, stratumListener,
+        ).also { it.start() }
         monitorJob = scope.launch { monitorLoop() }
     }
 
@@ -185,7 +191,7 @@ class MiningService : Service() {
             }
             if (tempC != null) {
                 if (tempC >= s.maxBatteryTempC) overheated = true
-                else if (tempC <= s.maxBatteryTempC - 3) overheated = false
+                else if (tempC <= s.maxBatteryTempC - 2) overheated = false
             }
             val reason = when {
                 s.onlyWhenCharging && !plugged -> "Väntar på laddare"
@@ -274,7 +280,9 @@ class MiningService : Service() {
         override fun onJob(job: StratumJob) {
             lastJob = job
             rebuildWork(job)
-            MinerState.set { it.copy(networkDifficulty = job.networkDifficulty(), status = "Minar") }
+            val first = MinerState.ui.value.networkDifficulty == 0.0
+            MinerState.set { it.copy(networkDifficulty = job.networkDifficulty(), status = "Minar", connected = true) }
+            if (first) MinerState.log("Första jobbet mottaget – hashning startar")
         }
 
         override fun onShareResult(accepted: Boolean, error: String?) {
