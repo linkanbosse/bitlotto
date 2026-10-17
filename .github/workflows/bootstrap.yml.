@@ -1,0 +1,45 @@
+name: Unpack BitLotto
+
+# One-time helper: unpacks bitlotto.zip into the repo, removes itself,
+# and starts the real "Build APK" workflow.
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack project
+        id: unpack
+        run: |
+          if [ ! -f bitlotto.zip ]; then
+            echo "bitlotto.zip saknas ännu – ladda upp den så körs detta igen."
+            echo "done=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          unzip -q -o bitlotto.zip -d /tmp/unpacked
+          cp -a /tmp/unpacked/bitlotto/. .
+          rm -f bitlotto.zip .github/workflows/bootstrap.yml
+          chmod +x gradlew
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git update-index --chmod=+x gradlew
+          git commit -m "Unpack BitLotto project"
+          git push
+          echo "done=true" >> "$GITHUB_OUTPUT"
+
+      - name: Start build
+        if: steps.unpack.outputs.done == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sleep 5
+          gh workflow run build.yml --ref "${GITHUB_REF_NAME}"
