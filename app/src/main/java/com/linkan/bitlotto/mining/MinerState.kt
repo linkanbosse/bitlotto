@@ -14,6 +14,7 @@ data class MinerUi(
     val authorized: Boolean = false,
     val hashrate: Double = 0.0,
     val threads: Int = 0,
+    val engine: String = "",
     val poolDifficulty: Double = 0.0,
     val networkDifficulty: Double = 0.0,
     val blockHeightHint: String = "",

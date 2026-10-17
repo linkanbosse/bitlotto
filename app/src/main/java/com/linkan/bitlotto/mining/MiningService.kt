@@ -109,11 +109,12 @@ class MiningService : Service() {
                 status = "Ansluter…",
                 pool = "${s.poolHost}:${s.poolPort}",
                 threads = threads,
+                engine = eng.engineName(),
                 bestEver = bestEver,
                 log = it.log,
             )
         }
-        MinerState.log("Startar $threads trådar mot ${s.poolHost}:${s.poolPort}")
+        MinerState.log("Startar $threads trådar mot ${s.poolHost}:${s.poolPort} · motor: ${eng.engineName()}")
 
         val factory = ThreadFactory { r ->
             Thread {

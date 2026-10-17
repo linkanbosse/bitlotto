@@ -95,6 +95,10 @@ public final class MiningEngine {
                 try { Thread.sleep(1000); } catch (InterruptedException ie) { return; }
                 continue;
             }
+            if (useNative) {
+                scanNative(w, en2, hh, out);
+                continue;
+            }
             long n = 0;
             while (n <= 0xFFFFFFFFL) {
                 long end = Math.min(n + 0x10000L, 0x100000000L);
@@ -107,6 +111,31 @@ public final class MiningEngine {
             }
         }
     }
+
+    /** Native scan over the full nonce range; every candidate is re-hashed in Java before use. */
+    private void scanNative(Work w, String en2, HeaderHasher hh, int[] out) {
+        int[] mid = hh.midstate();
+        int[] tail = hh.tail();
+        int[] found = new int[256];
+        long n = 0;
+        while (n < 0x100000000L) {
+            long chunk = Math.min(NATIVE_CHUNK, 0x100000000L - n);
+            int c = NativeHasher.scan(mid, tail, (int) n, (int) chunk, found);
+            for (int i = 0; i < c; i++) {
+                hh.hash(found[i], out);
+                if ((out[7] & 0x00FFFFFF) == 0) evaluate(w, en2, found[i], out);
+            }
+            n += chunk;
+            hashes.addAndGet(chunk);
+            if (!running || paused || work != w) return;
+        }
+    }
+
+    private static final long NATIVE_CHUNK = 0x80000L;
+
+    private final boolean useNative = NativeHasher.available();
+
+    public String engineName() { return NativeHasher.engineName(); }
 
     private void evaluate(Work w, String en2, int nonce, int[] out) {
         BigInteger value = new BigInteger(1, Hex.reverse(HeaderHasher.toBytes(out)));

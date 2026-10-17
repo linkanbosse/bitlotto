@@ -44,6 +44,12 @@ public final class HeaderHasher {
         Sha256.compress(out, x);
     }
 
+    /** State after compressing header bytes 0..63. */
+    public int[] midstate() { return mid.clone(); }
+
+    /** Big-endian words at header bytes 64..75. */
+    public int[] tail() { return new int[]{t0, t1, t2}; }
+
     /** Converts hash words to bytes in internal order. */
     public static byte[] toBytes(int[] h) {
         byte[] b = new byte[32];

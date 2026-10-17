@@ -98,7 +98,7 @@ fun MinerScreen(vm: MainViewModel) {
                 }
                 if (ui.running) {
                     Text(
-                        "${ui.threads} trådar · ${ui.pool} · ${formatDuration(ui.sessionSeconds)}",
+                        "${ui.threads} trådar · ${ui.pool} · ${formatDuration(ui.sessionSeconds)}\nMotor: ${ui.engine}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

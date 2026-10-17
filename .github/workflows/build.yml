@@ -9,7 +9,25 @@ permissions:
   contents: write
 
 jobs:
+  native-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install aarch64 cross compiler and emulator
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu qemu-user
+      - name: Test hasher on x86-64 (portable C)
+        run: |
+          gcc -O3 -Wall -o test_x86 app/src/test-native/test_sha256.c
+          ./test_x86
+      - name: Test hasher on aarch64 (ARMv8 SHA2 + portable, emulated)
+        run: |
+          aarch64-linux-gnu-gcc -O3 -Wall -static -march=armv8-a+crypto -o test_arm app/src/test-native/test_sha256.c
+          qemu-aarch64 -cpu max ./test_arm
+
   build:
+    needs: native-test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
